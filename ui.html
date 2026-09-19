@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jev · medidor de playlists</title>
+<style>
+  :root { --bg:#0e1015; --panel:#171a22; --line:#272b36; --fg:#e7e9ee; --dim:#8b90a0;
+          --accent:#6ee7a8; --warn:#f2c14e; --bad:#f2757a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex;
+           align-items:center; gap:14px; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; letter-spacing:.3px; }
+  h1 span { color:var(--accent); }
+  .chip { background:var(--panel); border:1px solid var(--line); border-radius:999px;
+          padding:5px 12px; color:var(--dim); font-size:12px; }
+  .chip b { color:var(--fg); font-weight:600; }
+  main { display:grid; grid-template-columns:1fr 380px; gap:16px; padding:16px 22px; }
+  @media (max-width:1000px){ main{ grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.8px; color:var(--dim);
+             margin:0 0 12px; }
+  input, select, button { font:inherit; border-radius:8px; border:1px solid var(--line);
+    background:#0f1218; color:var(--fg); padding:9px 11px; }
+  input { width:100%; }
+  select { max-width:100%; }
+  button { background:var(--accent); color:#04140c; border:0; font-weight:700; cursor:pointer; padding:9px 16px; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); font-weight:500; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--dim); font-size:12px; }
+  .result { margin-top:14px; }
+  .big { font-size:40px; font-weight:800; line-height:1; }
+  .verdict { font-weight:700; padding:3px 10px; border-radius:999px; font-size:12px; }
+  .go { background:rgba(110,231,168,.15); color:var(--accent); }
+  .no { background:rgba(242,117,122,.15); color:var(--bad); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.6px; }
+  td.num { font-variant-numeric:tabular-nums; font-weight:700; }
+  .bar { height:6px; border-radius:3px; background:#0f1218; overflow:hidden; min-width:70px; }
+  .bar > i { display:block; height:100%; background:var(--accent); }
+  a { color:var(--fg); text-decoration:none; }
+  a:hover { color:var(--accent); }
+  .progress { height:8px; background:#0f1218; border-radius:4px; overflow:hidden; margin:10px 0; }
+  .progress > i { display:block; height:100%; width:0; background:var(--warn); transition:width .3s; }
+  iframe { width:100%; aspect-ratio:16/9; border:1px solid var(--line); border-radius:10px; background:#000; }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--dim); }
+  .pill.same { color:var(--accent); border-color:rgba(110,231,168,.4); }
+  .pill.adjacent { color:var(--warn); border-color:rgba(242,193,78,.4); }
+  .pill.off { color:var(--bad); border-color:rgba(242,117,122,.4); }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jev <span>·</span> medidor de playlists</h1>
+  <div class="chip" id="summary">cargando…</div>
+</header>
+
+<main>
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>Perfil activo</h2>
+      <div class="row">
+        <select id="profileSel" style="flex:1"></select>
+        <button class="ghost" id="delProfile" title="Quitar este perfil">Quitar</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="profileInput" placeholder="Agregar otra playlist tuya (URL o ID)" />
+        <button id="addProfile">Agregar</button>
+      </div>
+      <p class="muted" id="profileMsg">Sumá todas tus playlists; usá “todos los géneros” para un perfil general.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2>Medir un tema</h2>
+      <div class="row">
+        <input id="meterInput" placeholder="Artista - Tema, o pegá una URL de YouTube Music" />
+        <button id="meterBtn">Medir</button>
+      </div>
+      <div id="meterResult" class="result"></div>
+    </div>
+
+    <div class="card">
+      <h2>Escanear una playlist pública</h2>
+      <div class="row">
+        <input id="scanInput" placeholder="URL o ID de la playlist a explorar" />
+        <button id="scanBtn">Escanear</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="muted">máximo</span>
+        <select id="scanMax">
+          <option>50</option><option selected>100</option><option>200</option>
+          <option>500</option><option>1000</option><option value="0">todas</option>
+        </select>
+        <span class="muted">backend</span>
+        <select id="backend">
+          <option value="lmstudio" selected>LM Studio (14B)</option>
+          <option value="ollama">Ollama (7B)</option>
+          <option value="atomic">Atomic</option>
+        </select>
+      </div>
+      <div class="progress hide" id="scanProgressWrap"><i id="scanProgress"></i></div>
+      <p class="muted" id="scanMsg"></p>
+      <table id="scanTable" class="hide">
+        <thead><tr><th>#</th><th>Match</th><th>Tema</th><th>Género</th><th>P(add)</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Vista previa</h2>
+      <div id="playerWrap" class="muted">Elegí un tema para escucharlo y verificar.</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+
+async function loadProfiles() {
+  const r = await fetch('/api/profiles');
+  const d = await r.json();
+  const sel = $('#profileSel');
+  sel.innerHTML = '';
+  if (d.combined) {
+    const opt = document.createElement('option');
+    opt.value = '*';
+    opt.textContent = `todos los géneros (${d.combined.count} temas)`;
+    sel.appendChild(opt);
+  }
+  d.profiles.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.playlist_id;
+    opt.textContent = `${p.title} — ${p.count} temas`;
+    if (p.playlist_id === d.active && !d.combined) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  const total = d.profiles.length;
+  $('#summary').innerHTML = total
+    ? `${total} perfil(es)` + (d.combined ? ` · general: <b>${d.combined.count}</b> temas` : '')
+    : 'sin perfiles todavía';
+  $('#delProfile').disabled = !sel.value || sel.value === '*';
+}
+
+$('#addProfile').onclick = async () => {
+  const v = $('#profileInput').value.trim();
+  if (!v) return;
+  $('#profileMsg').textContent = 'construyendo perfil…';
+  $('#addProfile').disabled = true;
+  try {
+    const r = await fetch('/api/profiles', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({playlist_id: v})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'error');
+    $('#profileMsg').textContent = `agregado: ${d.title} (${d.count} temas)`;
+    $('#profileInput').value = '';
+    await loadProfiles();
+  } catch (e) { $('#profileMsg').textContent = 'error: ' + e.message; }
+  $('#addProfile').disabled = false;
+};
+
+$('#delProfile').onclick = async () => {
+  const pid = $('#profileSel').value;
+  if (!pid || pid === '*') return;
+  await fetch('/api/profiles/' + encodeURIComponent(pid), {method:'DELETE'});
+  $('#profileMsg').textContent = 'perfil quitado';
+  await loadProfiles();
+};
+
+$('#meterBtn').onclick = async () => {
+  const q = $('#meterInput').value.trim();
+  if (!q) return;
+  $('#meterResult').innerHTML = '<span class="muted">midiendo…</span>';
+  $('#meterBtn').disabled = true;
+  try {
+    const r = await fetch('/api/rate', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({query:q, backend:$('#backend').value, profile:$('#profileSel').value})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'error');
+    renderMeter(d);
+  } catch (e) { $('#meterResult').innerHTML = `<span class="muted">error: ${e.message}</span>`; }
+  $('#meterBtn').disabled = false;
+};
+
+function renderMeter(d) {
+  const th = d.threshold || 55;
+  const go = d.match >= th;
+  $('#meterResult').innerHTML = `
+    <div style="display:flex; align-items:center; gap:16px">
+      <div class="big" style="color:${go?'var(--accent)':'var(--bad)'}">${d.match}</div>
+      <div>
+        <div style="font-weight:600">${d.title} — ${(d.artists||[]).join(', ')}</div>
+        <div class="muted">P(add) ${d.add_probability.toFixed(2)} · género ${d.genre||'?'} · umbral ${th}</div>
+      </div>
+      <div style="margin-left:auto" class="verdict ${go?'go':'no'}">${go?'ESCUCHAR':'SALTAR'}</div>
+    </div>`;
+  if (d.videoId) showPlayer(d.videoId);
+}
+
+$('#scanBtn').onclick = async () => {
+  const v = $('#scanInput').value.trim();
+  if (!v) return;
+  $('#scanTable').classList.add('hide');
+  $('#scanProgressWrap').classList.remove('hide');
+  $('#scanProgress').style.width = '0%';
+  $('#scanMsg').textContent = 'iniciando…';
+  $('#scanBtn').disabled = true;
+  try {
+    const r = await fetch('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({playlist:v, max_tracks:+$('#scanMax').value,
+        backend:$('#backend').value, profile:$('#profileSel').value})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'error');
+    pollScan(d.job_id);
+  } catch (e) { $('#scanMsg').textContent = 'error: ' + e.message; $('#scanBtn').disabled = false; }
+};
+
+async function pollScan(id) {
+  const r = await fetch('/api/scan/' + id);
+  const d = await r.json();
+  if (d.total) $('#scanProgress').style.width = Math.round(100*d.done/d.total) + '%';
+  const who = d.profile_title ? ` [perfil: ${d.profile_title}]` : '';
+  $('#scanMsg').textContent = d.playlist_title
+    ? `"${d.playlist_title}"${who} — ${d.done}/${d.total} analizados`
+    : 'leyendo playlist…';
+  renderRows(d.results, d.threshold || 55);
+  if (d.status === 'running') { setTimeout(() => pollScan(id), 1500); }
+  else {
+    $('#scanBtn').disabled = false;
+    if (d.error) $('#scanMsg').textContent = 'error: ' + d.error;
+    else $('#scanMsg').textContent = `"${d.playlist_title}"${who} — ${d.results.length} temas puntuados (umbral ${d.threshold || 55})`;
+  }
+}
+
+function renderRows(rows, threshold) {
+  const tb = $('#scanTable tbody');
+  tb.innerHTML = rows.map((r,i) => {
+    const go = r.match >= threshold;
+    return `<tr>
+      <td class="num muted">${i+1}</td>
+      <td class="num" style="color:${go?'var(--accent)':'var(--bad)'}">
+        ${r.match}<div class="bar"><i style="width:${r.match}%; background:${go?'var(--accent)':'var(--bad)'}"></i></div>
+      </td>
+      <td>${r.videoId?`<a href="#" onclick="showPlayer('${r.videoId}');return false">${r.title}</a>`:r.title}
+          <div class="muted">${(r.artists||[]).join(', ')}</div></td>
+      <td><span class="pill ${r.genre||''}">${r.genre||'?'}</span></td>
+      <td class="num">${r.add_probability!=null?r.add_probability.toFixed(2):'—'}</td>
+      <td>${r.videoId?`<button class="ghost" onclick="showPlayer('${r.videoId}')">▶</button>`:''}</td>
+    </tr>`;
+  }).join('');
+  if (rows.length) $('#scanTable').classList.remove('hide');
+}
+
+async function showPlayer(vid) {
+  if (!vid) return;
+  $('#playerWrap').innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?autoplay=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+}
+
+loadProfiles();
+</script>
+</body>
+</html>
